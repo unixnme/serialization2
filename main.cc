@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <cmath>
 
 #include "boost/archive/binary_iarchive.hpp"
@@ -11,7 +12,7 @@
 #include <bitsery/brief_syntax.h>
 #include <bitsery/brief_syntax/vector.h>
 
-using Buffer = std::vector<uint8_t>;
+using Buffer = std::vector<char>;
 using OutputAdapter = bitsery::OutputBufferAdapter<Buffer>;
 using InputAdapter = bitsery::InputBufferAdapter<Buffer>;
 
@@ -77,13 +78,19 @@ bool TestBoost(const T &data, const std::string &filename) {
 
 template<typename T>
 bool TestBitsery(const T &data, const std::string &filename) {
-    Buffer buffer;
     T new_data;
     unsigned long writtenSize;
     {
+        Buffer buffer;
         writtenSize = bitsery::quickSerialization<OutputAdapter>(buffer, data);
+        std::ofstream ofs{filename};
+        ofs.write(buffer.data(), writtenSize);
     }
     {
+        std::ifstream ifs{filename};
+        Buffer buffer;
+        buffer.resize(writtenSize);
+        ifs.read(buffer.data(), writtenSize);
         auto state = bitsery::quickDeserialization<InputAdapter>({buffer.begin(), writtenSize}, new_data);
     }
     return data == new_data;

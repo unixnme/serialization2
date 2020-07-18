@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <chrono>
 
 #include "boost/archive/binary_iarchive.hpp"
 #include "boost/archive/binary_oarchive.hpp"
@@ -97,9 +98,17 @@ bool TestBitsery(const T &data, const std::string &filename) {
 }
 
 int main() {
-    const auto aad = CreateData(100, 1000);
+    const auto aad = CreateData(1000, 1000);
+    const auto start = std::chrono::high_resolution_clock::now();
     assert(TestBoost(aad, "boost.bin"));
+    const auto end1 = std::chrono::high_resolution_clock::now();
+    const auto t1 = std::chrono::duration_cast<std::chrono::milliseconds>(end1 - start);
     assert(TestBitsery(aad, "bitsery.bin"));
+    const auto end2 = std::chrono::high_resolution_clock::now();
+    const auto t2 = std::chrono::duration_cast<std::chrono::milliseconds>(end2 - end1);
+
+    std::cout << "boost: " << t1.count() << "ms" << std::endl;
+    std::cout << "bitsery: " << t2.count() << "ms" << std::endl;
 
     return 0;
 }

@@ -9,13 +9,10 @@
 #include "boost/serialization/vector.hpp"
 
 #include <bitsery/bitsery.h>
-#include <bitsery/adapter/buffer.h>
+#include <bitsery/adapter/stream.h>
 #include <bitsery/brief_syntax.h>
 #include <bitsery/brief_syntax/vector.h>
 
-using Buffer = std::vector<char>;
-using OutputAdapter = bitsery::OutputBufferAdapter<Buffer>;
-using InputAdapter = bitsery::InputBufferAdapter<Buffer>;
 
 class Data {
 private:
@@ -82,17 +79,14 @@ bool TestBitsery(const T &data, const std::string &filename) {
     T new_data;
     unsigned long writtenSize;
     {
-        Buffer buffer;
-        writtenSize = bitsery::quickSerialization<OutputAdapter>(buffer, data);
         std::ofstream ofs{filename};
-        ofs.write(buffer.data(), writtenSize);
+        bitsery::Serializer<bitsery::OutputBufferedStreamAdapter> ser{ofs};
+        ser.object(data);
+        ser.adapter().flush();
     }
     {
         std::ifstream ifs{filename};
-        Buffer buffer;
-        buffer.resize(writtenSize);
-        ifs.read(buffer.data(), writtenSize);
-        auto state = bitsery::quickDeserialization<InputAdapter>({buffer.begin(), writtenSize}, new_data);
+        auto state = bitsery::quickDeserialization<bitsery::InputStreamAdapter>(ifs, new_data);
     }
     return data == new_data;
 }

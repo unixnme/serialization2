@@ -9,13 +9,10 @@
 #include "boost/serialization/vector.hpp"
 
 #include <bitsery/bitsery.h>
-#include <bitsery/adapter/buffer.h>
+#include <bitsery/adapter/stream.h>
 #include <bitsery/brief_syntax.h>
 #include <bitsery/brief_syntax/vector.h>
 
-using Buffer = std::vector<char>;
-using OutputAdapter = bitsery::OutputBufferAdapter<Buffer>;
-using InputAdapter = bitsery::InputBufferAdapter<Buffer>;
 
 class Data {
 private:
@@ -60,55 +57,71 @@ std::vector<std::vector<Data>> CreateData(int n, int m) {
 }
 
 template<typename T>
-bool TestBoost(const T &data, const std::string &filename) {
-    {
-        std::ofstream ofs(filename);
-        boost::archive::binary_oarchive oa{ofs};
-        oa << data;
-    }
+bool SaveBoost(const T &data, const std::string &filename) {
+    std::ofstream ofs(filename);
+    if (!ofs) return false;
 
-    T new_data;
-    {
-        std::ifstream ifs(filename);
-        boost::archive::binary_iarchive ia{ifs};
-        ia >> new_data;
-    }
-
-    return data == new_data;
+    boost::archive::binary_oarchive oa{ofs};
+    oa << data;
+    return true;
 }
 
 template<typename T>
-bool TestBitsery(const T &data, const std::string &filename) {
-    T new_data;
-    unsigned long writtenSize;
-    {
-        Buffer buffer;
-        writtenSize = bitsery::quickSerialization<OutputAdapter>(buffer, data);
-        std::ofstream ofs{filename};
-        ofs.write(buffer.data(), writtenSize);
-    }
-    {
-        std::ifstream ifs{filename};
-        Buffer buffer;
-        buffer.resize(writtenSize);
-        ifs.read(buffer.data(), writtenSize);
-        auto state = bitsery::quickDeserialization<InputAdapter>({buffer.begin(), writtenSize}, new_data);
-    }
-    return data == new_data;
+bool LoadBoost(T &data, const std::string &filename) {
+    std::ifstream ifs(filename);
+    if (!ifs) return false;
+
+    boost::archive::binary_iarchive ia{ifs};
+    ia >> data;
+
+    return true;
+}
+
+template<typename T>
+bool SaveBitsery(const T &data, const std::string &filename) {
+    std::ofstream ofs{filename};
+    if (!ofs) return false;
+
+    bitsery::Serializer<bitsery::OutputBufferedStreamAdapter> ser{ofs};
+    ser.object(data);
+    ser.adapter().flush();
+    return true;
+}
+
+template<typename T>
+bool LoadBitsery(T &data, const std::string &filename) {
+    std::ifstream ifs{filename};
+    if (!ifs) return false;
+
+    auto state = bitsery::quickDeserialization<bitsery::InputStreamAdapter>(ifs, data);
+    return true;
 }
 
 int main() {
     const auto aad = CreateData(1000, 1000);
     const auto start = std::chrono::high_resolution_clock::now();
-    assert(TestBoost(aad, "boost.bin"));
+    std::vector<std::vector<Data>> aad_boost, aad_bitsery;
+    assert(SaveBoost(aad, "boost.bin"));
     const auto end1 = std::chrono::high_resolution_clock::now();
-    const auto t1 = std::chrono::duration_cast<std::chrono::milliseconds>(end1 - start);
-    assert(TestBitsery(aad, "bitsery.bin"));
+    assert(LoadBoost(aad_boost, "boost.bin"));
+    assert(aad == aad_boost);
     const auto end2 = std::chrono::high_resolution_clock::now();
-    const auto t2 = std::chrono::duration_cast<std::chrono::milliseconds>(end2 - end1);
 
-    std::cout << "boost: " << t1.count() << "ms" << std::endl;
-    std::cout << "bitsery: " << t2.count() << "ms" << std::endl;
+    assert(SaveBitsery(aad, "bitsery.bin"));
+    const auto end3 = std::chrono::high_resolution_clock::now();
+    assert(LoadBitsery(aad_bitsery, "bitsery.bin"));
+    assert(aad == aad_bitsery);
+    const auto end4 = std::chrono::high_resolution_clock::now();
+
+    const auto t1 = std::chrono::duration_cast<std::chrono::milliseconds>(end1 - start);
+    const auto t2 = std::chrono::duration_cast<std::chrono::milliseconds>(end2 - end1);
+    const auto t3 = std::chrono::duration_cast<std::chrono::milliseconds>(end3 - end2);
+    const auto t4 = std::chrono::duration_cast<std::chrono::milliseconds>(end4 - end3);
+
+    std::cout << "boost save: " << t1.count() << "ms" << std::endl;
+    std::cout << "boost load: " << t2.count() << "ms" << std::endl;
+    std::cout << "bitsery save: " << t3.count() << "ms" << std::endl;
+    std::cout << "bitsery load: " << t4.count() << "ms" << std::endl;
 
     return 0;
 }

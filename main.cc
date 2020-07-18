@@ -1,9 +1,19 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+
 #include "boost/archive/binary_iarchive.hpp"
 #include "boost/archive/binary_oarchive.hpp"
 #include "boost/serialization/vector.hpp"
+
+#include <bitsery/bitsery.h>
+#include <bitsery/adapter/buffer.h>
+#include <bitsery/brief_syntax.h>
+#include <bitsery/brief_syntax/vector.h>
+
+using Buffer = std::vector<uint8_t>;
+using OutputAdapter = bitsery::OutputBufferAdapter<Buffer>;
+using InputAdapter = bitsery::InputBufferAdapter<Buffer>;
 
 class Data {
 private:
@@ -27,6 +37,11 @@ public:
     bool operator==(const Data &that) const {
         return i == that.i && f == that.f && d == that.d;
     }
+
+    template <typename S>
+    void serialize(S& s) {
+        s(f, i, d);
+    }
 };
 
 std::vector<std::vector<Data>> CreateData(int n, int m) {
@@ -42,22 +57,42 @@ std::vector<std::vector<Data>> CreateData(int n, int m) {
     return aad;
 }
 
-int main() {
-    const auto filename = "data.bin";
-    auto aad = CreateData(100, 1000);
+template<typename T>
+bool TestBoost(const T &data, const std::string &filename) {
     {
         std::ofstream ofs(filename);
         boost::archive::binary_oarchive oa{ofs};
-        oa << aad;
+        oa << data;
     }
 
-    std::vector<std::vector<Data>> new_aad;
+    T new_data;
     {
         std::ifstream ifs(filename);
         boost::archive::binary_iarchive ia{ifs};
-        ia >> new_aad;
+        ia >> new_data;
     }
 
-    assert(aad == new_aad);
+    return data == new_data;
+}
+
+template<typename T>
+bool TestBitsery(const T &data, const std::string &filename) {
+    Buffer buffer;
+    T new_data;
+    unsigned long writtenSize;
+    {
+        writtenSize = bitsery::quickSerialization<OutputAdapter>(buffer, data);
+    }
+    {
+        auto state = bitsery::quickDeserialization<InputAdapter>({buffer.begin(), writtenSize}, new_data);
+    }
+    return data == new_data;
+}
+
+int main() {
+    const auto aad = CreateData(100, 1000);
+    assert(TestBoost(aad, "boost.bin"));
+    assert(TestBitsery(aad, "bitsery.bin"));
+
     return 0;
 }
